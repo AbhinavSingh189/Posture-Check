@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yoga Pose Validator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/3.21.0/tf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pose-detection/0.0.6/pose-detection.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .pose-selector {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            min-width: 300px;
+            text-align: center;
+        }
+        
+        .pose-selector h2 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+        
+        .pose-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .pose-card {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 3px solid transparent;
+        }
+        
+        .pose-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+        }
+        
+        .pose-card.selected {
+            border-color: #ffd700;
+            background: linear-gradient(135deg, #ffd700, #ffed4e);
+            color: #333;
+        }
+        
+        .start-btn {
+            background: linear-gradient(135deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+        
+        .start-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .start-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .camera-container {
+            position: relative;
+            background: white;
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: none;
+        }
+        
+        .video-wrapper {
+            position: relative;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        #video {
+            width: 640px;
+            height: 480px;
+            transform: scaleX(-1);
+        }
+        
+        .overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        .pose-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+        
+        .timer {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(255, 193, 7, 0.9);
+            color: #333;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+        
+        .feedback-box {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            border: 2px solid #333;
+            border-radius: 10px;
+            padding: 15px;
+            max-width: 300px;
+            display: none;
+        }
+        
+        .feedback-title {
+            font-weight: bold;
+            margin-bottom: 10px;
+            color: #e74c3c;
+        }
+        
+        .feedback-item {
+            margin: 5px 0;
+            color: #333;
+            font-size: 0.9rem;
+        }
+        
+        .countdown {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #ffd700;
+            font-size: 4rem;
+            font-weight: bold;
+            padding: 40px;
+            border-radius: 20px;
+            z-index: 1000;
+            display: none;
+        }
+        
+        .success-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        .success-title {
+            font-size: 3rem;
+            color: #4CAF50;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .success-message {
+            font-size: 1.2rem;
+            color: #333;
+            margin-bottom: 30px;
+        }
+        
+        .back-btn {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1.1rem;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .back-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+        
+        .controls {
+            margin-top: 15px;
+            text-align: center;
+        }
+        
+        .control-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            margin: 0 10px;
+            transition: all 0.3s ease;
+        }
+        
+        .control-btn:hover {
+            background: #c82333;
+            transform: translateY(-1px);
+        }
+        
+        @media (max-width: 768px) {
+            #video {
+                width: 100%;
+                max-width: 400px;
+                height: auto;
+            }
+            .header h1 {
+                font-size: 2rem;
+            }
+            .pose-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>🧘‍♀️ Yoga Pose Validator</h1>
+        <p>Perfect your yoga poses with AI-powered real-time feedback</p>
+    </div>
+
+    <div class="pose-selector" id="poseSelector">
+        <h2>Choose Your Pose</h2>
+        <div class="pose-grid" id="poseGrid">
+            <!-- Pose cards will be generated here -->
+        </div>
+        <form action="/start" method="post">
+            <input type="hidden" name="pose_name" id="poseNameInput">
+            <button class="start-btn" id="startBtn" disabled>Start Practice</button>
+        </form>
+
+
+    </div>
+
+    <div class="camera-container" id="cameraContainer">
+        <div class="video-wrapper">
+            <video id="video" autoplay playsinline></video>
+            <canvas class="overlay" id="overlay"></canvas>
+            <div class="pose-info" id="poseInfo">Pose: Loading...</div>
+            <div class="timer" id="timer">Get Ready!</div>
+            <div class="feedback-box" id="feedbackBox">
+                <div class="feedback-title">Adjust Your Posture</div>
+                <div id="feedbackList"></div>
+            </div>
+        </div>
+        <div class="controls">
+            <button class="control-btn" onclick="stopCamera()">Stop & Go Back</button>
+        </div>
+    </div>
+
+    <div class="countdown" id="countdown">3</div>
+
+    <div class="success-screen" id="successScreen">
+        <div class="success-title">🎉 EXCELLENT!</div>
+        <div class="success-message" id="successMessage">You held the pose correctly!</div>
+        <button class="back-btn" onclick="goBack()">Practice Another Pose</button>
+    </div>
+
+    <script>
+        // Yoga pose reference data
+        const poseData = {
+            "Warrior Pose": {
+                "left_knee": {
+                    "angle_min": 160,
+                    "angle_max": 180,
+                    "tip": "Straighten your left leg more"
+                },
+                "right_knee": {
+                    "angle_min": 80,
+                    "angle_max": 120,
+                    "tip": "Bend your right knee to 90 degrees"
+                },
+                "left_shoulder": {
+                    "angle_min": 160,
+                    "angle_max": 180,
+                    "tip": "Keep your left arm straight up"
+                },
+                "right_shoulder": {
+                    "angle_min": 160,
+                    "angle_max": 180,
+                    "tip": "Keep your right arm straight up"
+                },
+                "spine": {
+                    "angle_min": 160,
+                    "angle_max": 180,
+                    "tip": "Keep your spine straight and tall"
+                }
+            },
+            "Tree Pose": {
+                "left_knee": {
+                    "angle_min": 170,
+                    "angle_max": 180,
+                    "tip": "Keep your standing leg straight"
+                },
+                "right_knee": {
+                    "angle_min": 60,
+                    "angle_max": 90,
+                    "tip": "Bend your lifted leg more"
+                },
+                "left_shoulder": {
+                    "angle_min": 160,
+                    "angle_max": 180,
+                    "tip": "Raise your arms overhead"
+                },
+                "right_shoulder": {
+                    "angle_min": 160,
+                    "angle_max": 180,
+                    "tip": "Keep both arms reaching up"
+                },
+                "spine": {
+                    "angle_min": 170,
+                    "angle_max": 180,
+                    "tip": "Stand tall with straight spine"
+                }
+            },
+            "Downward Dog": {
+                "left_knee": {
+                    "angle_min": 160,
+                    "angle_max": 180,
+                    "tip": "Straighten your legs"
+                },
+                "right_knee": {
+                    "angle_min": 160,
+                    "angle_max": 180,
+                    "tip": "Keep both legs straight"
+                },
+                "left_shoulder": {
+                    "angle_min": 140,
+                    "angle_max": 170,
+                    "tip": "Adjust your shoulder alignment"
+                },
+                "right_shoulder": {
+                    "angle_min": 140,
+                    "angle_max": 170,
+                    "tip": "Keep shoulders over wrists"
+                },
+                "spine": {
+                    "angle_min": 120,
+                    "angle_max": 150,
+                    "tip": "Create an inverted V-shape"
+                }
+            },
+            "Mountain Pose": {
+                "left_knee": {
+                    "angle_min": 170,
+                    "angle_max": 180,
+                    "tip": "Keep your legs straight"
+                },
+                "right_knee": {
+                    "angle_min": 170,
+                    "angle_max": 180,
+                    "tip": "Stand with straight legs"
+                },
+                "left_shoulder": {
+                    "angle_min": 170,
+                    "angle_max": 180,
+                    "tip": "Relax your shoulders down"
+                },
+                "right_shoulder": {
+                    "angle_min": 170,
+                    "angle_max": 180,
+                    "tip": "Keep arms at your sides"
+                },
+                "spine": {
+                    "angle_min": 170,
+                    "angle_max": 180,
+                    "tip": "Stand tall with straight spine"
+                }
+            }
+        };
+
+        // Joint mapping for MediaPipe pose landmarks
+        const JOINT_MAP = {
+            "left_knee": [23, 25, 27], // LEFT_HIP, LEFT_KNEE, LEFT_ANKLE
+            "right_knee": [24, 26, 28], // RIGHT_HIP, RIGHT_KNEE, RIGHT_ANKLE
+            "left_elbow": [11, 13, 15], // LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST
+            "right_elbow": [12, 14, 16], // RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST
+            "left_shoulder": [13, 11, 23], // LEFT_ELBOW, LEFT_SHOULDER, LEFT_HIP
+            "right_shoulder": [14, 12, 24], // RIGHT_ELBOW, RIGHT_SHOULDER, RIGHT_HIP
+            "spine": [23, 24, 0] // LEFT_HIP, RIGHT_HIP, NOSE (approximation)
+        };
+
+        let selectedPose = null;
+        let poseDetector = null;
+        let video = null;
+        let isRunning = false;
+        let holdCounter = 0;
+        let targetFrames = 150; // ~5 seconds at 30fps
+        let animationId = null;
+
+        // Initialize the application
+        async function init() {
+            await generatePoseCards();
+            await loadPoseDetector();
+        }
+
+        // Generate pose selection cards
+        // Generate pose selection cards from backend
+        async function generatePoseCards() {
+            const response = await fetch('/pose-list');
+            const poseNames = await response.json();
+            const poseGrid = document.getElementById('poseGrid');
+            poseGrid.innerHTML = '';
+
+            poseNames.forEach(poseName => {
+                const card = document.createElement('div');
+                card.className = 'pose-card';
+                card.innerHTML = `<h3>${poseName}</h3>`;
+                card.onclick = () => selectPose(poseName, card);
+                poseGrid.appendChild(card);
+            });
+        }
+
+
+
+        function selectPose(poseName, cardElement) {
+            document.querySelectorAll('.pose-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            cardElement.classList.add('selected');
+            selectedPose = poseName;
+            document.getElementById('startBtn').disabled = false;
+
+            // Normalize pose name for backend compatibility (e.g., "Downward Dog" → "downdog")
+            const normalizedName = poseName.toLowerCase().replace(/\s/g, '');
+            document.getElementById('poseNameInput').value = normalizedName;
+        }
+
+
+        // Load MediaPipe Pose detector
+        async function loadPoseDetector() {
+            try {
+                // Note: This is a simplified version. In a real implementation,
+                // you'd need to properly load MediaPipe Pose
+                console.log('Pose detector loaded');
+            } catch (error) {
+                console.error('Error loading pose detector:', error);
+            }
+        }
+
+        // Start the yoga session
+        async function startYogaSession() {
+            if (!selectedPose) return;
+
+            document.getElementById('poseSelector').style.display = 'none';
+            document.getElementById('cameraContainer').style.display = 'block';
+
+            try {
+                await setupCamera();
+                showCountdown();
+            } catch (error) {
+                console.error('Error starting camera:', error);
+                alert('Unable to access camera. Please check permissions.');
+                goBack();
+            }
+        }
+
+        // Setup camera
+        async function setupCamera() {
+            video = document.getElementById('video');
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: 640,
+                    height: 480
+                }
+            });
+            video.srcObject = stream;
+
+            return new Promise((resolve) => {
+                video.onloadedmetadata = () => {
+                    resolve();
+                };
+            });
+        }
+
+        // Show countdown
+        function showCountdown() {
+            const countdown = document.getElementById('countdown');
+            countdown.style.display = 'block';
+
+            let count = 3;
+            const countInterval = setInterval(() => {
+                countdown.textContent = count;
+                count--;
+
+                if (count < 0) {
+                    clearInterval(countInterval);
+                    countdown.style.display = 'none';
+                    startPoseDetection();
+                }
+            }, 1000);
+        }
+
+        // Start pose detection (simplified version)
+        function startPoseDetection() {
+            isRunning = true;
+            holdCounter = 0;
+
+            document.getElementById('poseInfo').textContent = `Pose: ${selectedPose}`;
+            document.getElementById('timer').textContent = 'Hold still: 5s';
+
+            // Simplified detection loop - in a real implementation,
+            // this would use MediaPipe to detect poses and calculate angles
+            detectPoseLoop();
+        }
+
+        // Simplified pose detection loop
+        function detectPoseLoop() {
+            if (!isRunning) return;
+
+            // Simulate pose detection and validation
+            // In a real implementation, you would:
+            // 1. Get pose landmarks from MediaPipe
+            // 2. Calculate joint angles
+            // 3. Compare with reference data
+            // 4. Show feedback
+
+            const isCorrectPose = Math.random() > 0.3; // Simulate pose correctness
+
+            if (isCorrectPose) {
+                holdCounter++;
+                const remaining = Math.max(0, (targetFrames - holdCounter) / 30);
+                document.getElementById('timer').textContent = `Hold still: ${Math.ceil(remaining)}s`;
+                document.getElementById('feedbackBox').style.display = 'none';
+
+                if (holdCounter >= targetFrames) {
+                    showSuccess();
+                    return;
+                }
+            } else {
+                holdCounter = 0;
+                document.getElementById('timer').textContent = 'Hold still: 5s';
+                showFeedback(['Adjust your posture', 'Keep your spine straight', 'Align your limbs']);
+            }
+
+            animationId = requestAnimationFrame(detectPoseLoop);
+        }
+
+        // Show feedback
+        function showFeedback(tips) {
+            const feedbackBox = document.getElementById('feedbackBox');
+            const feedbackList = document.getElementById('feedbackList');
+
+            feedbackList.innerHTML = '';
+            tips.forEach(tip => {
+                const item = document.createElement('div');
+                item.className = 'feedback-item';
+                item.textContent = `• ${tip}`;
+                feedbackList.appendChild(item);
+            });
+
+            feedbackBox.style.display = 'block';
+        }
+
+        // Show success screen
+        function showSuccess() {
+            isRunning = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+
+            document.getElementById('successMessage').textContent =
+                `You held the '${selectedPose}' pose correctly!`;
+            document.getElementById('successScreen').style.display = 'flex';
+        }
+
+        // Stop camera and go back
+        function stopCamera() {
+            isRunning = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+
+            if (video && video.srcObject) {
+                video.srcObject.getTracks().forEach(track => track.stop());
+            }
+
+            goBack();
+        }
+
+        // Go back to pose selection
+        function goBack() {
+            document.getElementById('cameraContainer').style.display = 'none';
+            document.getElementById('successScreen').style.display = 'none';
+            document.getElementById('poseSelector').style.display = 'block';
+
+            selectedPose = null;
+            document.querySelectorAll('.pose-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.getElementById('startBtn').disabled = true;
+        }
+
+        // Calculate angle between three points
+        function calculateAngle(a, b, c) {
+            const radians = Math.atan2(c.y - b.y, c.x - b.x) - Math.atan2(a.y - b.y, a.x - b.x);
+            let angle = Math.abs(radians * 180.0 / Math.PI);
+            if (angle > 180.0) {
+                angle = 360 - angle;
+            }
+            return angle;
+        }
+
+        // Event listener
+
+        // Initialize when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+
+</html>
