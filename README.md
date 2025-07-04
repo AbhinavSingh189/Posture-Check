@@ -45,3 +45,12 @@ install opencv-python, mediapipe & numpy
 - Integrate voice guidance or scoring system
 - Add a web-based interface for accessibility
 
+## Result 
+Grid Lines Example 
+![gridLinesExample.png](result_images/gridLinesExample.png)
+
+The user is given the choice to allow grid lines or not 
+
+No Grid Lines Example
+![nogridLinesExample.png](result_images/nogridLinesExample.png)
+
